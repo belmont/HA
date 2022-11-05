@@ -53,8 +53,8 @@ pushd $TEMP_DIR >/dev/null
 # Create LXC
 export CTID=$(pvesh get /cluster/nextid)
 export PCT_OSTYPE=debian
-export PCT_OSVERSION=11
-export PCT_DISK_SIZE=16
+export PCT_OSVERSION=10
+export PCT_DISK_SIZE=4
 export PCT_OPTIONS="
   -cmode shell
   -features nesting=1
@@ -78,13 +78,13 @@ wget -qO - ${REPO}/tarball/master | tar -xz --strip-components=1
 # Modify LXC permissions to support Docker
 LXC_CONFIG=/etc/pve/lxc/${CTID}.conf
 cat <<EOF >> $LXC_CONFIG
-lxc.cgroup.devices.allow: a
+lxc.cgroup2.devices.allow: a
 lxc.cap.drop:
 EOF
 
 # Load modules for Docker before starting LXC
 cat << 'EOF' >> $LXC_CONFIG
-#lxc.hook.pre-start: sh -ec 'for module in aufs overlay; do modinfo $module; $(lsmod | grep -Fq $module) || modprobe $module; done;'
+lxc.hook.pre-start: sh -ec 'for module in overlay; do modinfo $module; $(lsmod | grep -Fq $module) || modprobe $module; done;'
 EOF
 
 # Set autodev hook to enable access to devices in container
@@ -110,33 +110,34 @@ lxc-cmd apt-get -y purge openssh-{client,server} >/dev/null
 
 # Update container OS
 msg "Updating container OS..."
-lxc-cmd apt-get update >/dev/null
+lxc-cmd apt-get update --allow-releaseinfo-change >/dev/null
 lxc-cmd apt-get -qqy upgrade &>/dev/null
 
 # Install prerequisites
 msg "Installing prerequisites..."
 lxc-cmd apt-get -qqy install \
-    avahi-daemon curl jq network-manager xterm &>/dev/null
+    avahi-daemon wget curl udisks2 jq libglib2.0-bin network-manager dbus xterm &>/dev/null
 
 # Install Docker
 msg "Installing Docker..."
-lxc-cmd sh <(curl -sSL https://get.docker.com) &>/dev/null
+lxc-cmd bash -c "curl -fsSL get.docker.com | sh" &>/dev/null
 
 # Configure Docker configuration
 msg "Configuring Docker..."
 DOCKER_CONFIG_PATH='/etc/docker/daemon.json'
-HA_URL_BASE=https://github.com/home-assistant/supervised-installer/raw/master/files
+
+HA_URL_BASE='https://raw.githubusercontent.com/home-assistant/supervised-installer/main/homeassistant-supervised/etc'
 lxc-cmd mkdir -p $(dirname $DOCKER_CONFIG_PATH)
-lxc-cmd wget -qLO $DOCKER_CONFIG_PATH ${HA_URL_BASE}/docker_daemon.json
+lxc-cmd wget -qLO $DOCKER_CONFIG_PATH ${HA_URL_BASE}/docker/daemon.json
 lxc-cmd systemctl restart docker
 
 # Configure NetworkManager
 msg "Configuring NetworkManager..."
 NETWORKMANAGER_CONFIG_PATH='/etc/NetworkManager/NetworkManager.conf'
-lxc-cmd wget -qLO $NETWORKMANAGER_CONFIG_PATH ${HA_URL_BASE}/NetworkManager.conf
+lxc-cmd wget -qLO $NETWORKMANAGER_CONFIG_PATH ${HA_URL_BASE}/NetworkManager/NetworkManager.conf
 lxc-cmd sed -i 's/type\:veth/interface-name\:veth\*/' $NETWORKMANAGER_CONFIG_PATH
 NETWORKMANAGER_PROFILE_PATH='/etc/NetworkManager/system-connections/default'
-lxc-cmd wget -qLO $NETWORKMANAGER_PROFILE_PATH ${HA_URL_BASE}/system-connection-default
+lxc-cmd wget -qLO $NETWORKMANAGER_PROFILE_PATH ${HA_URL_BASE}/NetworkManager/system-connections/default
 lxc-cmd chmod 600 $NETWORKMANAGER_PROFILE_PATH
 NETWORKMANAGER_CONNECTION=$(lxc-cmd nmcli connection | grep eth0 | awk -F "  " '{print $1}')
 lxc-cmd nmcli connection down "$NETWORKMANAGER_CONNECTION" > /dev/null
@@ -170,9 +171,11 @@ lxc-cmd docker tag "$HASSIO_DOCKER:$HASSIO_VERSION" "$HASSIO_DOCKER:latest" > /d
 msg "Installing Home Assistant Supervisor..."
 HASSIO_SUPERVISOR_PATH=/usr/sbin/hassio-supervisor
 HASSIO_SUPERVISOR_SERVICE=/etc/systemd/system/hassio-supervisor.service
-lxc-cmd wget -qLO $HASSIO_SUPERVISOR_PATH ${HA_URL_BASE}/hassio-supervisor
+HA_URL_BASE='https://raw.githubusercontent.com/home-assistant/supervised-installer/main/homeassistant-supervised/usr'
+lxc-cmd wget -qLO $HASSIO_SUPERVISOR_PATH ${HA_URL_BASE}/sbin/hassio-supervisor
 lxc-cmd chmod a+x $HASSIO_SUPERVISOR_PATH
-lxc-cmd wget -qLO $HASSIO_SUPERVISOR_SERVICE ${HA_URL_BASE}/hassio-supervisor.service
+HA_URL_BASE='https://raw.githubusercontent.com/home-assistant/supervised-installer/main/homeassistant-supervised/etc'
+lxc-cmd wget -qLO $HASSIO_SUPERVISOR_SERVICE ${HA_URL_BASE}/systemd/system/hassio-supervisor.service
 lxc-cmd sed -i "s,%%HASSIO_CONFIG%%,${HASSIO_CONFIG_PATH},g" $HASSIO_SUPERVISOR_PATH
 lxc-cmd sed -i -e "s,%%BINARY_DOCKER%%,/usr/bin/docker,g" \
   -e "s,%%SERVICE_DOCKER%%,docker.service,g" \
@@ -192,7 +195,7 @@ lxc-cmd systemctl start hassio-supervisor.service
 
 # Install 'ha' cli
 msg "Installing the 'ha' cli..."
-lxc-cmd wget -qLO /usr/bin/ha ${HA_URL_BASE}/ha
+lxc-cmd wget -qLO /usr/bin/ha https://raw.githubusercontent.com/home-assistant/supervised-installer/main/homeassistant-supervised/usr/bin/ha
 lxc-cmd chmod a+x /usr/bin/ha
 
 # Setup 'ha' cli prompt
