@@ -126,7 +126,7 @@ lxc-cmd bash -c "curl -fsSL get.docker.com | sh" &>/dev/null
 msg "Configuring Docker..."
 DOCKER_CONFIG_PATH='/etc/docker/daemon.json'
 
-HA_URL_BASE='https://raw.githubusercontent.com/home-assistant/supervised-installer/main/homeassistant-supervised/etc'
+HA_URL_BASE='https://github.com/home-assistant/supervised-installer/tree/main/homeassistant-supervised/etc'
 lxc-cmd mkdir -p $(dirname $DOCKER_CONFIG_PATH)
 lxc-cmd wget -qLO $DOCKER_CONFIG_PATH ${HA_URL_BASE}/docker/daemon.json
 lxc-cmd systemctl restart docker
