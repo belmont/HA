@@ -53,8 +53,8 @@ pushd $TEMP_DIR >/dev/null
 # Create LXC
 export CTID=$(pvesh get /cluster/nextid)
 export PCT_OSTYPE=debian
-export PCT_OSVERSION=10
-export PCT_DISK_SIZE=4
+export PCT_OSVERSION=11
+export PCT_DISK_SIZE=16
 export PCT_OPTIONS="
   -cmode shell
   -features nesting=1
